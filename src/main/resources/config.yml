@@ -1,0 +1,101 @@
+gui:
+  title: "&#ffb347강화소"
+  size: 27
+  item-slot: 11
+  ticket-slot: 15
+  preview-slot: 13
+  apply-slot: 22
+  filler-material: BLACK_STAINED_GLASS_PANE
+  filler-name: " "
+
+features:
+  require-permission: true
+  close-return-items: true
+  block-shift-move-into-gui: true
+  allow-stack-size-one-only: true
+  preserve-existing-lore: true
+
+messages:
+  prefix: "&#ffb347[강화] &f"
+  no-permission: "&c권한이 없습니다."
+  player-only: "&c플레이어만 사용할 수 있습니다."
+  config-reloaded: "&a설정을 다시 불러왔습니다."
+  invalid-item: "&c왼쪽 칸에 강화할 장비를 올려주세요."
+  invalid-ticket: "&c오른쪽 칸에 올바른 강화권을 올려주세요."
+  item-stack-not-supported: "&c강화는 1개짜리 장비만 가능합니다."
+  already-max-level: "&e이미 최대 강화 단계입니다."
+  success: "&a강화 성공! 현재 %level%강 입니다."
+  downgrade: "&e강화 실패... %level%강으로 하락했습니다."
+  destroyed: "&c강화 실패! 장비가 0강으로 초기화되었습니다."
+  opened: "&7강화 GUI를 열었습니다."
+  returned-items: "&e남은 아이템을 인벤토리로 반환했습니다."
+  ticket-given: "&a%player%에게 %ticket% x%amount% 지급 완료"
+  unknown-ticket: "&c강화권 키를 찾을 수 없습니다: %key%"
+  usage-admin: "&e/강화 reload | /강화 list | /강화 give <player> <ticket> [amount]"
+
+citizens:
+  enabled: false
+  npc-ids: []
+  require-permission: true
+
+upgrade:
+  max-level: 10
+  level-format: "&6+%level% &f%name%"
+  lore-line: "&7강화 단계: &6+%level%"
+  custom-model-data-by-level:
+    5: 1005
+    10: 1010
+
+upgrade-tickets:
+  basic:
+    enabled: true
+    material: PAPER
+    display-name: "&#ffd166기본 강화권"
+    lore:
+      - "&7장비를 1강 올릴 수 있습니다."
+
+level-rules:
+  "0":
+    success: 100.0
+    downgrade: 0.0
+    destroy: 0.0
+  "1":
+    success: 90.0
+    downgrade: 10.0
+    destroy: 0.0
+  "2":
+    success: 80.0
+    downgrade: 20.0
+    destroy: 0.0
+  "3":
+    success: 70.0
+    downgrade: 25.0
+    destroy: 5.0
+  "4":
+    success: 60.0
+    downgrade: 30.0
+    destroy: 10.0
+  "5":
+    success: 50.0
+    downgrade: 35.0
+    destroy: 15.0
+    success-commands:
+      - "say %player% 님이 %item_name% 을(를) +%next_level% 달성했습니다!"
+  "6":
+    success: 45.0
+    downgrade: 35.0
+    destroy: 20.0
+  "7":
+    success: 35.0
+    downgrade: 40.0
+    destroy: 25.0
+  "8":
+    success: 30.0
+    downgrade: 40.0
+    destroy: 30.0
+  "9":
+    success: 20.0
+    downgrade: 45.0
+    destroy: 35.0
+    success-commands:
+      - "say %player% 님이 %item_name% 을(를) 최고 단계 +%next_level% 달성!"
