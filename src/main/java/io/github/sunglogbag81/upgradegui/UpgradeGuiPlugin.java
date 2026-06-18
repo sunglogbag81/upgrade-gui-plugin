@@ -11,7 +11,9 @@ import io.github.sunglogbag81.upgradegui.util.ColorUtil;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
+import org.bukkit.Sound;
 import org.bukkit.command.PluginCommand;
+import org.bukkit.enchantments.Enchantment;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemFlag;
@@ -22,7 +24,11 @@ import org.bukkit.plugin.java.JavaPlugin;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadLocalRandom;
 
 public final class UpgradeGuiPlugin extends JavaPlugin {
@@ -31,6 +37,7 @@ public final class UpgradeGuiPlugin extends JavaPlugin {
     private NamespacedKey levelKey;
     private NamespacedKey baseNameKey;
     private NamespacedKey baseLoreKey;
+    private final Set<UUID> processingPlayers = ConcurrentHashMap.newKeySet();
 
     @Override
     public void onEnable() {
@@ -59,6 +66,10 @@ public final class UpgradeGuiPlugin extends JavaPlugin {
         upgradeConfig.reload();
     }
 
+    public boolean isProcessing(Player player) {
+        return player != null && processingPlayers.contains(player.getUniqueId());
+    }
+
     public String getTicketKey(ItemStack itemStack) {
         if (itemStack == null || itemStack.getType().isAir() || !itemStack.hasItemMeta()) {
             return null;
@@ -83,6 +94,12 @@ public final class UpgradeGuiPlugin extends JavaPlugin {
         meta.setDisplayName(definition.displayName());
         meta.setLore(definition.lore());
         meta.addItemFlags(ItemFlag.HIDE_ATTRIBUTES, ItemFlag.HIDE_ENCHANTS);
+        if (definition.customModelData() != null) {
+            meta.setCustomModelData(definition.customModelData());
+        }
+        if (definition.glowing()) {
+            meta.addEnchant(Enchantment.DURABILITY, 1, true);
+        }
         meta.getPersistentDataContainer().set(ticketKey, PersistentDataType.STRING, definition.key());
         itemStack.setItemMeta(meta);
         return itemStack;
@@ -104,21 +121,31 @@ public final class UpgradeGuiPlugin extends JavaPlugin {
         }
         setIfValid(inventory, upgradeConfig.getItemSlot(), null);
         setIfValid(inventory, upgradeConfig.getTicketSlot(), null);
-        setIfValid(inventory, upgradeConfig.getPreviewSlot(), guide(Material.NETHER_STAR, "&6강화 정보", List.of("&7장비와 강화권을 넣어주세요.")));
-        setIfValid(inventory, upgradeConfig.getApplySlot(), guide(Material.EMERALD, "&a강화 실행", List.of("&7클릭하면 강화가 진행됩니다.")));
+        setIfValid(inventory, upgradeConfig.getPreviewSlot(), guide(Material.NETHER_STAR, upgradeConfig.getPreviewName(), upgradeConfig.renderPreviewLore(Map.of("%level%", "0", "%next_level%", "1", "%delay_ticks%", String.valueOf(upgradeConfig.getAttemptDelayTicks())))));
+        setIfValid(inventory, upgradeConfig.getApplySlot(), guide(Material.EMERALD, upgradeConfig.getApplyName(), upgradeConfig.renderApplyLore(Map.of("%delay_ticks%", String.valueOf(upgradeConfig.getAttemptDelayTicks())))));
         return inventory;
     }
 
     public void openMenu(Player player) {
         player.openInventory(createMenu());
         upgradeConfig.sendMessage(player, "opened");
+        playSound(player, upgradeConfig.getOpenSound());
     }
 
     public void attemptUpgrade(Player player, Inventory inventory) {
+        if (isProcessing(player)) {
+            upgradeConfig.sendMessage(player, "already-processing");
+            return;
+        }
+
         ItemStack item = inventory.getItem(upgradeConfig.getItemSlot());
         ItemStack ticket = inventory.getItem(upgradeConfig.getTicketSlot());
         if (item == null || item.getType().isAir()) {
             upgradeConfig.sendMessage(player, "invalid-item");
+            return;
+        }
+        if (!upgradeConfig.isMaterialAllowed(item.getType())) {
+            upgradeConfig.sendMessage(player, "invalid-material");
             return;
         }
         if (upgradeConfig.isAllowStackSizeOneOnly() && item.getAmount() != 1) {
@@ -137,6 +164,29 @@ public final class UpgradeGuiPlugin extends JavaPlugin {
             return;
         }
 
+        ItemStack processingItem = item.clone();
+        inventory.setItem(upgradeConfig.getItemSlot(), null);
+        consumeOne(inventory, upgradeConfig.getTicketSlot());
+        inventory.setItem(upgradeConfig.getPreviewSlot(), guide(Material.CLOCK, upgradeConfig.getProcessingName(), upgradeConfig.renderProcessingLore(Map.of(
+                "%level%", String.valueOf(currentLevel),
+                "%next_level%", String.valueOf(Math.min(upgradeConfig.getMaxLevel(), currentLevel + 1)),
+                "%delay_ticks%", String.valueOf(upgradeConfig.getAttemptDelayTicks())
+        ))));
+
+        processingPlayers.add(player.getUniqueId());
+        upgradeConfig.sendMessage(player, "processing-started", Map.of("%delay_ticks%", String.valueOf(upgradeConfig.getAttemptDelayTicks())));
+        playSound(player, upgradeConfig.getStartSound());
+
+        Bukkit.getScheduler().runTaskLater(this, () -> finishUpgrade(player.getUniqueId(), inventory, processingItem, currentLevel), upgradeConfig.getAttemptDelayTicks());
+    }
+
+    private void finishUpgrade(UUID playerId, Inventory inventory, ItemStack item, int currentLevel) {
+        processingPlayers.remove(playerId);
+        Player player = Bukkit.getPlayer(playerId);
+        if (player == null) {
+            return;
+        }
+
         LevelRule rule = upgradeConfig.getRule(currentLevel);
         double success = rule.successChance();
         double downgrade = rule.downgradeChance();
@@ -146,37 +196,60 @@ public final class UpgradeGuiPlugin extends JavaPlugin {
             success = 100.0D;
             total = 100.0D;
         }
+
         double roll = ThreadLocalRandom.current().nextDouble(total);
         int nextLevel;
         String messageKey;
+        String previewName;
+        String soundKey;
         if (roll < success) {
             nextLevel = Math.min(upgradeConfig.getMaxLevel(), currentLevel + 1);
             messageKey = "success";
+            previewName = upgradeConfig.getSuccessPreviewName();
+            soundKey = upgradeConfig.getSuccessSound();
         } else if (roll < success + downgrade) {
             nextLevel = Math.max(0, currentLevel - 1);
             messageKey = "downgrade";
+            previewName = upgradeConfig.getDowngradePreviewName();
+            soundKey = upgradeConfig.getDowngradeSound();
         } else {
             nextLevel = 0;
             messageKey = "destroyed";
+            previewName = upgradeConfig.getDestroyPreviewName();
+            soundKey = upgradeConfig.getDestroySound();
         }
 
         applyUpgradeMetadata(item, nextLevel);
-        inventory.setItem(upgradeConfig.getItemSlot(), item);
-        consumeOne(inventory, upgradeConfig.getTicketSlot());
-        inventory.setItem(upgradeConfig.getPreviewSlot(), guide(Material.ENCHANTED_BOOK, "&6강화 결과", List.of(
-                "&7현재 단계: &f+" + nextLevel,
-                "&7성공: &f" + success,
-                "&7하락: &f" + downgrade,
-                "&7초기화: &f" + destroy
-        )));
+        ItemStack result = item.clone();
+
+        boolean deliveredToGui = false;
+        if (player.getOpenInventory().getTopInventory().equals(inventory) && inventory.getHolder() instanceof UpgradeMenuHolder) {
+            inventory.setItem(upgradeConfig.getItemSlot(), result);
+            inventory.setItem(upgradeConfig.getPreviewSlot(), guide(Material.ENCHANTED_BOOK, previewName, upgradeConfig.renderResultPreviewLore(Map.of(
+                    "%level%", String.valueOf(currentLevel),
+                    "%next_level%", String.valueOf(nextLevel),
+                    "%success%", String.valueOf(success),
+                    "%downgrade%", String.valueOf(downgrade),
+                    "%destroy%", String.valueOf(destroy)
+            ))));
+            deliveredToGui = true;
+        } else if (upgradeConfig.isDeliverResultToInventoryIfClosed()) {
+            player.getInventory().addItem(result).values().forEach(leftover -> player.getWorld().dropItemNaturally(player.getLocation(), leftover));
+            upgradeConfig.sendMessage(player, "result-delivered");
+        }
+
         upgradeConfig.sendMessage(player, messageKey, Map.of("%level%", String.valueOf(nextLevel)));
+        playSound(player, soundKey);
+        if (!deliveredToGui && !upgradeConfig.isDeliverResultToInventoryIfClosed()) {
+            player.getInventory().addItem(result).values().forEach(leftover -> player.getWorld().dropItemNaturally(player.getLocation(), leftover));
+        }
         if ("success".equals(messageKey) && !rule.successCommands().isEmpty()) {
             for (String command : rule.successCommands()) {
                 String prepared = command
                         .replace("%player%", player.getName())
                         .replace("%level%", String.valueOf(currentLevel))
                         .replace("%next_level%", String.valueOf(nextLevel))
-                        .replace("%item_name%", getDisplayName(item));
+                        .replace("%item_name%", getDisplayName(result));
                 Bukkit.dispatchCommand(Bukkit.getConsoleSender(), prepared);
             }
         }
@@ -218,6 +291,10 @@ public final class UpgradeGuiPlugin extends JavaPlugin {
             meta.setCustomModelData(cmd);
         }
         itemStack.setItemMeta(meta);
+    }
+
+    public void playGiveSound(Player player) {
+        playSound(player, upgradeConfig.getGiveSound());
     }
 
     private String getDisplayName(ItemStack itemStack) {
@@ -273,5 +350,15 @@ public final class UpgradeGuiPlugin extends JavaPlugin {
         meta.setLore(ColorUtil.colorize(lore));
         itemStack.setItemMeta(meta);
         return itemStack;
+    }
+
+    private void playSound(Player player, String soundName) {
+        if (player == null || soundName == null || soundName.isBlank()) {
+            return;
+        }
+        try {
+            player.playSound(player.getLocation(), Sound.valueOf(soundName.toUpperCase(Locale.ROOT)), 1.0F, 1.0F);
+        } catch (IllegalArgumentException ignored) {
+        }
     }
 }

@@ -44,7 +44,10 @@ public final class UpgradeCommand implements CommandExecutor, TabCompleter {
             case "reload" -> handleReload(sender);
             case "list" -> handleList(sender);
             case "give" -> handleGive(sender, args);
-            default -> { config.sendMessage(sender, "usage-admin"); yield true; }
+            default -> {
+                config.sendMessage(sender, "usage-admin");
+                yield true;
+            }
         };
     }
 
@@ -64,6 +67,7 @@ public final class UpgradeCommand implements CommandExecutor, TabCompleter {
             return true;
         }
         sender.sendMessage("강화권: " + String.join(", ", config.getTickets().keySet()));
+        sender.sendMessage("강화 지연시간(ticks): " + config.getAttemptDelayTicks());
         return true;
     }
 
@@ -96,6 +100,7 @@ public final class UpgradeCommand implements CommandExecutor, TabCompleter {
         var item = plugin.createTicketItem(definition);
         item.setAmount(amount);
         target.getInventory().addItem(item);
+        plugin.playGiveSound(target);
         config.sendMessage(sender, "ticket-given", Map.of(
                 "%player%", target.getName(),
                 "%ticket%", definition.displayName(),

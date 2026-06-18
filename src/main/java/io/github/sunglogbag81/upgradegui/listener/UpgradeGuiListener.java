@@ -25,6 +25,10 @@ public final class UpgradeGuiListener implements Listener {
         if (!(event.getView().getTopInventory().getHolder() instanceof UpgradeMenuHolder)) {
             return;
         }
+        if (config.isLockGuiDuringDelay() && event.getWhoClicked() instanceof Player player && plugin.isProcessing(player)) {
+            event.setCancelled(true);
+            return;
+        }
         int rawSlot = event.getRawSlot();
         int topSize = event.getView().getTopInventory().getSize();
         boolean topInventory = rawSlot >= 0 && rawSlot < topSize;
@@ -54,6 +58,10 @@ public final class UpgradeGuiListener implements Listener {
     @EventHandler
     public void onDrag(InventoryDragEvent event) {
         if (!(event.getView().getTopInventory().getHolder() instanceof UpgradeMenuHolder)) {
+            return;
+        }
+        if (config.isLockGuiDuringDelay() && event.getWhoClicked() instanceof Player player && plugin.isProcessing(player)) {
+            event.setCancelled(true);
             return;
         }
         int topSize = event.getView().getTopInventory().getSize();

@@ -8,5 +8,7 @@ public record UpgradeTicketDefinition(String key,
                                       boolean enabled,
                                       Material material,
                                       String displayName,
-                                      List<String> lore) {
+                                      List<String> lore,
+                                      Integer customModelData,
+                                      boolean glowing) {
 }
