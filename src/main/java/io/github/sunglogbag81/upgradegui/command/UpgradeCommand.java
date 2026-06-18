@@ -44,6 +44,7 @@ public final class UpgradeCommand implements CommandExecutor, TabCompleter {
             case "reload" -> handleReload(sender);
             case "list" -> handleList(sender);
             case "give" -> handleGive(sender, args);
+            case "setup" -> handleSetup(sender);
             default -> {
                 config.sendMessage(sender, "usage-admin");
                 yield true;
@@ -67,7 +68,21 @@ public final class UpgradeCommand implements CommandExecutor, TabCompleter {
             return true;
         }
         sender.sendMessage("강화권: " + String.join(", ", config.getTickets().keySet()));
+        sender.sendMessage("등록된 단계 아이템: " + config.getConfiguredLevels());
         sender.sendMessage("강화 지연시간(ticks): " + config.getAttemptDelayTicks());
+        return true;
+    }
+
+    private boolean handleSetup(CommandSender sender) {
+        if (!(sender instanceof Player player)) {
+            config.sendMessage(sender, "player-only");
+            return true;
+        }
+        if (!player.hasPermission("upgradegui.setup") && !player.hasPermission("upgradegui.admin")) {
+            config.sendMessage(player, "no-permission");
+            return true;
+        }
+        plugin.openSetupMenu(player);
         return true;
     }
 
@@ -112,7 +127,7 @@ public final class UpgradeCommand implements CommandExecutor, TabCompleter {
     @Override
     public @Nullable List<String> onTabComplete(@NotNull CommandSender sender, @NotNull Command command, @NotNull String alias, @NotNull String[] args) {
         if (args.length == 1) {
-            return filter(List.of("reload", "list", "give"), args[0]);
+            return filter(List.of("reload", "list", "give", "setup"), args[0]);
         }
         if (args.length == 2 && args[0].equalsIgnoreCase("give")) {
             return filter(Bukkit.getOnlinePlayers().stream().map(Player::getName).toList(), args[1]);

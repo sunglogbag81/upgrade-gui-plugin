@@ -3,6 +3,7 @@ package io.github.sunglogbag81.upgradegui;
 import io.github.sunglogbag81.upgradegui.command.UpgradeCommand;
 import io.github.sunglogbag81.upgradegui.config.UpgradeConfig;
 import io.github.sunglogbag81.upgradegui.gui.UpgradeMenuHolder;
+import io.github.sunglogbag81.upgradegui.gui.UpgradeSetupMenuHolder;
 import io.github.sunglogbag81.upgradegui.listener.CitizensUpgradeListener;
 import io.github.sunglogbag81.upgradegui.listener.UpgradeGuiListener;
 import io.github.sunglogbag81.upgradegui.model.LevelRule;
@@ -10,7 +11,6 @@ import io.github.sunglogbag81.upgradegui.model.UpgradeTicketDefinition;
 import io.github.sunglogbag81.upgradegui.util.ColorUtil;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
-import org.bukkit.NamespacedKey;
 import org.bukkit.Sound;
 import org.bukkit.command.PluginCommand;
 import org.bukkit.enchantments.Enchantment;
@@ -19,10 +19,8 @@ import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemFlag;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
-import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.plugin.java.JavaPlugin;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -33,19 +31,11 @@ import java.util.concurrent.ThreadLocalRandom;
 
 public final class UpgradeGuiPlugin extends JavaPlugin {
     private UpgradeConfig upgradeConfig;
-    private NamespacedKey ticketKey;
-    private NamespacedKey levelKey;
-    private NamespacedKey baseNameKey;
-    private NamespacedKey baseLoreKey;
     private final Set<UUID> processingPlayers = ConcurrentHashMap.newKeySet();
 
     @Override
     public void onEnable() {
         saveDefaultConfig();
-        ticketKey = new NamespacedKey(this, "upgrade-ticket-key");
-        levelKey = new NamespacedKey(this, "upgrade-level");
-        baseNameKey = new NamespacedKey(this, "upgrade-base-name");
-        baseLoreKey = new NamespacedKey(this, "upgrade-base-lore");
         upgradeConfig = new UpgradeConfig(this);
         upgradeConfig.reload();
 
@@ -70,21 +60,6 @@ public final class UpgradeGuiPlugin extends JavaPlugin {
         return player != null && processingPlayers.contains(player.getUniqueId());
     }
 
-    public String getTicketKey(ItemStack itemStack) {
-        if (itemStack == null || itemStack.getType().isAir() || !itemStack.hasItemMeta()) {
-            return null;
-        }
-        return itemStack.getItemMeta().getPersistentDataContainer().get(ticketKey, PersistentDataType.STRING);
-    }
-
-    public int getUpgradeLevel(ItemStack itemStack) {
-        if (itemStack == null || itemStack.getType().isAir() || !itemStack.hasItemMeta()) {
-            return 0;
-        }
-        Integer value = itemStack.getItemMeta().getPersistentDataContainer().get(levelKey, PersistentDataType.INTEGER);
-        return value == null ? 0 : Math.max(0, value);
-    }
-
     public ItemStack createTicketItem(UpgradeTicketDefinition definition) {
         ItemStack itemStack = new ItemStack(definition.material());
         ItemMeta meta = itemStack.getItemMeta();
@@ -100,7 +75,6 @@ public final class UpgradeGuiPlugin extends JavaPlugin {
         if (definition.glowing()) {
             meta.addEnchant(Enchantment.DURABILITY, 1, true);
         }
-        meta.getPersistentDataContainer().set(ticketKey, PersistentDataType.STRING, definition.key());
         itemStack.setItemMeta(meta);
         return itemStack;
     }
@@ -108,6 +82,24 @@ public final class UpgradeGuiPlugin extends JavaPlugin {
     public Inventory createMenu() {
         UpgradeMenuHolder holder = new UpgradeMenuHolder();
         Inventory inventory = Bukkit.createInventory(holder, upgradeConfig.getGuiSize(), upgradeConfig.getGuiTitle());
+        holder.setInventory(inventory);
+        fillWithFiller(inventory);
+        setIfValid(inventory, upgradeConfig.getItemSlot(), null);
+        setIfValid(inventory, upgradeConfig.getTicketSlot(), null);
+        setIfValid(inventory, upgradeConfig.getPreviewSlot(), guide(Material.NETHER_STAR, upgradeConfig.getPreviewName(), upgradeConfig.renderPreviewLore(Map.of(
+                "%current_level%", "미등록",
+                "%next_level%", "미정",
+                "%delay_ticks%", String.valueOf(upgradeConfig.getAttemptDelayTicks())
+        ))));
+        setIfValid(inventory, upgradeConfig.getApplySlot(), guide(Material.EMERALD, upgradeConfig.getApplyName(), upgradeConfig.renderApplyLore(Map.of(
+                "%delay_ticks%", String.valueOf(upgradeConfig.getAttemptDelayTicks())
+        ))));
+        return inventory;
+    }
+
+    public Inventory createSetupMenu() {
+        UpgradeSetupMenuHolder holder = new UpgradeSetupMenuHolder();
+        Inventory inventory = Bukkit.createInventory(holder, upgradeConfig.getSetupSize(), upgradeConfig.getSetupTitle());
         holder.setInventory(inventory);
 
         ItemStack filler = new ItemStack(upgradeConfig.getFillerMaterial());
@@ -119,10 +111,15 @@ public final class UpgradeGuiPlugin extends JavaPlugin {
         for (int i = 0; i < inventory.getSize(); i++) {
             inventory.setItem(i, filler);
         }
-        setIfValid(inventory, upgradeConfig.getItemSlot(), null);
-        setIfValid(inventory, upgradeConfig.getTicketSlot(), null);
-        setIfValid(inventory, upgradeConfig.getPreviewSlot(), guide(Material.NETHER_STAR, upgradeConfig.getPreviewName(), upgradeConfig.renderPreviewLore(Map.of("%level%", "0", "%next_level%", "1", "%delay_ticks%", String.valueOf(upgradeConfig.getAttemptDelayTicks())))));
-        setIfValid(inventory, upgradeConfig.getApplySlot(), guide(Material.EMERALD, upgradeConfig.getApplyName(), upgradeConfig.renderApplyLore(Map.of("%delay_ticks%", String.valueOf(upgradeConfig.getAttemptDelayTicks())))));
+
+        for (int level = 0; level <= upgradeConfig.getMaxLevel(); level++) {
+            ItemStack template = upgradeConfig.getTemplate(level);
+            int slot = upgradeConfig.getSetupSlot(level);
+            inventory.setItem(slot, template == null ? createSetupPlaceholder(level) : template.clone());
+        }
+        inventory.setItem(upgradeConfig.getSetupInfoSlot(), guide(upgradeConfig.getSetupInfoMaterial(), upgradeConfig.getSetupInfoName(), upgradeConfig.renderSetupInfoLore(Map.of(
+                "%max_level%", String.valueOf(upgradeConfig.getMaxLevel())
+        ))));
         return inventory;
     }
 
@@ -130,6 +127,32 @@ public final class UpgradeGuiPlugin extends JavaPlugin {
         player.openInventory(createMenu());
         upgradeConfig.sendMessage(player, "opened");
         playSound(player, upgradeConfig.getOpenSound());
+    }
+
+    public void openSetupMenu(Player player) {
+        player.openInventory(createSetupMenu());
+        upgradeConfig.sendMessage(player, "setup-opened");
+        playSound(player, upgradeConfig.getSetupSound());
+    }
+
+    public boolean isConfiguredTemplate(ItemStack itemStack) {
+        return itemStack != null && !itemStack.getType().isAir() && upgradeConfig.findMatchingLevel(itemStack) >= 0;
+    }
+
+    public void saveSetupInventory(Player player, Inventory inventory) {
+        for (int level = 0; level <= upgradeConfig.getMaxLevel(); level++) {
+            ItemStack item = inventory.getItem(upgradeConfig.getSetupSlot(level));
+            if (item == null || item.getType().isAir() || isPlaceholder(item, level)) {
+                upgradeConfig.saveTemplate(level, null);
+                continue;
+            }
+            upgradeConfig.saveTemplate(level, item);
+            inventory.setItem(upgradeConfig.getSetupSlot(level), null);
+            player.getInventory().addItem(item).values().forEach(leftover -> player.getWorld().dropItemNaturally(player.getLocation(), leftover));
+        }
+        upgradeConfig.persistTemplateChanges();
+        upgradeConfig.reload();
+        upgradeConfig.sendMessage(player, "setup-saved", Map.of("%configured_levels%", String.valueOf(upgradeConfig.getConfiguredLevels().size())));
     }
 
     public void attemptUpgrade(Player player, Inventory inventory) {
@@ -152,23 +175,43 @@ public final class UpgradeGuiPlugin extends JavaPlugin {
             upgradeConfig.sendMessage(player, "item-stack-not-supported");
             return;
         }
-        String ticketId = getTicketKey(ticket);
-        UpgradeTicketDefinition definition = upgradeConfig.getTicket(ticketId);
-        if (definition == null || !definition.enabled()) {
-            upgradeConfig.sendMessage(player, "invalid-ticket");
+        int currentLevel = upgradeConfig.findMatchingLevel(item);
+        if (currentLevel < 0) {
+            upgradeConfig.sendMessage(player, "unregistered-item");
             return;
         }
-        int currentLevel = getUpgradeLevel(item);
         if (currentLevel >= upgradeConfig.getMaxLevel()) {
             upgradeConfig.sendMessage(player, "already-max-level");
             return;
         }
+        if (ticket == null || ticket.getType().isAir()) {
+            upgradeConfig.sendMessage(player, "invalid-ticket");
+            return;
+        }
+        if (!isValidTicket(ticket)) {
+            upgradeConfig.sendMessage(player, "invalid-ticket");
+            return;
+        }
 
-        ItemStack processingItem = item.clone();
+        LevelRule rule = upgradeConfig.getRule(currentLevel);
+        if (rule.successChance() > 0.0D && upgradeConfig.getTemplate(currentLevel + 1) == null) {
+            upgradeConfig.sendMessage(player, "missing-result-item", Map.of("%level%", String.valueOf(currentLevel + 1)));
+            return;
+        }
+        if (rule.downgradeChance() > 0.0D && currentLevel > 0 && upgradeConfig.getTemplate(currentLevel - 1) == null) {
+            upgradeConfig.sendMessage(player, "missing-result-item", Map.of("%level%", String.valueOf(currentLevel - 1)));
+            return;
+        }
+        if (rule.destroyChance() > 0.0D && upgradeConfig.getTemplate(0) == null) {
+            upgradeConfig.sendMessage(player, "missing-result-item", Map.of("%level%", "0"));
+            return;
+        }
+
+        ItemStack processingItem = upgradeConfig.normalizeTemplate(item);
         inventory.setItem(upgradeConfig.getItemSlot(), null);
         consumeOne(inventory, upgradeConfig.getTicketSlot());
         inventory.setItem(upgradeConfig.getPreviewSlot(), guide(Material.CLOCK, upgradeConfig.getProcessingName(), upgradeConfig.renderProcessingLore(Map.of(
-                "%level%", String.valueOf(currentLevel),
+                "%current_level%", String.valueOf(currentLevel),
                 "%next_level%", String.valueOf(Math.min(upgradeConfig.getMaxLevel(), currentLevel + 1)),
                 "%delay_ticks%", String.valueOf(upgradeConfig.getAttemptDelayTicks())
         ))));
@@ -176,11 +219,10 @@ public final class UpgradeGuiPlugin extends JavaPlugin {
         processingPlayers.add(player.getUniqueId());
         upgradeConfig.sendMessage(player, "processing-started", Map.of("%delay_ticks%", String.valueOf(upgradeConfig.getAttemptDelayTicks())));
         playSound(player, upgradeConfig.getStartSound());
-
         Bukkit.getScheduler().runTaskLater(this, () -> finishUpgrade(player.getUniqueId(), inventory, processingItem, currentLevel), upgradeConfig.getAttemptDelayTicks());
     }
 
-    private void finishUpgrade(UUID playerId, Inventory inventory, ItemStack item, int currentLevel) {
+    private void finishUpgrade(UUID playerId, Inventory inventory, ItemStack sourceItem, int currentLevel) {
         processingPlayers.remove(playerId);
         Player player = Bukkit.getPlayer(playerId);
         if (player == null) {
@@ -198,99 +240,84 @@ public final class UpgradeGuiPlugin extends JavaPlugin {
         }
 
         double roll = ThreadLocalRandom.current().nextDouble(total);
-        int nextLevel;
+        int resultLevel;
         String messageKey;
         String previewName;
         String soundKey;
         if (roll < success) {
-            nextLevel = Math.min(upgradeConfig.getMaxLevel(), currentLevel + 1);
+            resultLevel = Math.min(upgradeConfig.getMaxLevel(), currentLevel + 1);
             messageKey = "success";
             previewName = upgradeConfig.getSuccessPreviewName();
             soundKey = upgradeConfig.getSuccessSound();
         } else if (roll < success + downgrade) {
-            nextLevel = Math.max(0, currentLevel - 1);
+            resultLevel = Math.max(0, currentLevel - 1);
             messageKey = "downgrade";
             previewName = upgradeConfig.getDowngradePreviewName();
             soundKey = upgradeConfig.getDowngradeSound();
         } else {
-            nextLevel = 0;
+            resultLevel = 0;
             messageKey = "destroyed";
             previewName = upgradeConfig.getDestroyPreviewName();
             soundKey = upgradeConfig.getDestroySound();
         }
 
-        applyUpgradeMetadata(item, nextLevel);
-        ItemStack result = item.clone();
+        ItemStack result = upgradeConfig.getTemplate(resultLevel);
+        if (result == null) {
+            result = sourceItem.clone();
+        }
 
         boolean deliveredToGui = false;
         if (player.getOpenInventory().getTopInventory().equals(inventory) && inventory.getHolder() instanceof UpgradeMenuHolder) {
-            inventory.setItem(upgradeConfig.getItemSlot(), result);
+            inventory.setItem(upgradeConfig.getItemSlot(), result.clone());
             inventory.setItem(upgradeConfig.getPreviewSlot(), guide(Material.ENCHANTED_BOOK, previewName, upgradeConfig.renderResultPreviewLore(Map.of(
-                    "%level%", String.valueOf(currentLevel),
-                    "%next_level%", String.valueOf(nextLevel),
+                    "%current_level%", String.valueOf(currentLevel),
+                    "%next_level%", String.valueOf(resultLevel),
                     "%success%", String.valueOf(success),
                     "%downgrade%", String.valueOf(downgrade),
                     "%destroy%", String.valueOf(destroy)
             ))));
             deliveredToGui = true;
         } else if (upgradeConfig.isDeliverResultToInventoryIfClosed()) {
-            player.getInventory().addItem(result).values().forEach(leftover -> player.getWorld().dropItemNaturally(player.getLocation(), leftover));
+            player.getInventory().addItem(result.clone()).values().forEach(leftover -> player.getWorld().dropItemNaturally(player.getLocation(), leftover));
             upgradeConfig.sendMessage(player, "result-delivered");
         }
 
-        upgradeConfig.sendMessage(player, messageKey, Map.of("%level%", String.valueOf(nextLevel)));
+        upgradeConfig.sendMessage(player, messageKey, Map.of("%level%", String.valueOf(resultLevel)));
         playSound(player, soundKey);
         if (!deliveredToGui && !upgradeConfig.isDeliverResultToInventoryIfClosed()) {
-            player.getInventory().addItem(result).values().forEach(leftover -> player.getWorld().dropItemNaturally(player.getLocation(), leftover));
+            player.getInventory().addItem(result.clone()).values().forEach(leftover -> player.getWorld().dropItemNaturally(player.getLocation(), leftover));
         }
         if ("success".equals(messageKey) && !rule.successCommands().isEmpty()) {
             for (String command : rule.successCommands()) {
                 String prepared = command
                         .replace("%player%", player.getName())
                         .replace("%level%", String.valueOf(currentLevel))
-                        .replace("%next_level%", String.valueOf(nextLevel))
+                        .replace("%next_level%", String.valueOf(resultLevel))
                         .replace("%item_name%", getDisplayName(result));
                 Bukkit.dispatchCommand(Bukkit.getConsoleSender(), prepared);
             }
         }
     }
 
-    public void applyUpgradeMetadata(ItemStack itemStack, int level) {
-        ItemMeta meta = itemStack.getItemMeta();
-        if (meta == null) {
-            return;
-        }
-        var pdc = meta.getPersistentDataContainer();
-        String materialName = prettifyMaterial(itemStack.getType());
-        if (!pdc.has(baseNameKey, PersistentDataType.STRING)) {
-            pdc.set(baseNameKey, PersistentDataType.STRING, meta.hasDisplayName() ? meta.getDisplayName() : materialName);
-        }
-        if (!pdc.has(baseLoreKey, PersistentDataType.STRING)) {
-            List<String> lore = meta.hasLore() && meta.getLore() != null ? meta.getLore() : List.of();
-            pdc.set(baseLoreKey, PersistentDataType.STRING, String.join("\n", lore));
-        }
-
-        String baseName = pdc.getOrDefault(baseNameKey, PersistentDataType.STRING, materialName);
-        meta.setDisplayName(upgradeConfig.getLevelFormat()
-                .replace("%level%", String.valueOf(level))
-                .replace("%name%", baseName));
-
-        List<String> lore = new ArrayList<>();
-        if (upgradeConfig.isPreserveExistingLore()) {
-            String storedLore = pdc.getOrDefault(baseLoreKey, PersistentDataType.STRING, "");
-            if (!storedLore.isBlank()) {
-                lore.addAll(List.of(storedLore.split("\n")));
+    private boolean isValidTicket(ItemStack itemStack) {
+        for (UpgradeTicketDefinition definition : upgradeConfig.getTickets().values()) {
+            if (!definition.enabled()) {
+                continue;
+            }
+            if (createTicketItem(definition).isSimilar(itemStack)) {
+                return true;
             }
         }
-        lore.removeIf(line -> ColorUtil.colorize(line).equals(ColorUtil.colorize(upgradeConfig.getLoreLine().replace("%level%", String.valueOf(level)))) || line.contains("강화 단계:"));
-        lore.add(upgradeConfig.getLoreLine().replace("%level%", String.valueOf(level)));
-        meta.setLore(lore);
-        pdc.set(levelKey, PersistentDataType.INTEGER, level);
-        Integer cmd = upgradeConfig.getCustomModelData(level);
-        if (cmd != null) {
-            meta.setCustomModelData(cmd);
-        }
-        itemStack.setItemMeta(meta);
+        return false;
+    }
+
+    private boolean isPlaceholder(ItemStack itemStack, int level) {
+        ItemStack placeholder = createSetupPlaceholder(level);
+        return placeholder.isSimilar(itemStack);
+    }
+
+    private ItemStack createSetupPlaceholder(int level) {
+        return guide(upgradeConfig.getSetupPlaceholderMaterial(), upgradeConfig.getSetupPlaceholderName().replace("%level%", String.valueOf(level)), upgradeConfig.renderSetupPlaceholderLore(Map.of("%level%", String.valueOf(level))));
     }
 
     public void playGiveSound(Player player) {
@@ -340,6 +367,18 @@ public final class UpgradeGuiPlugin extends JavaPlugin {
         }
     }
 
+    private void fillWithFiller(Inventory inventory) {
+        ItemStack filler = new ItemStack(upgradeConfig.getFillerMaterial());
+        ItemMeta fillerMeta = filler.getItemMeta();
+        if (fillerMeta != null) {
+            fillerMeta.setDisplayName(upgradeConfig.getFillerName());
+            filler.setItemMeta(fillerMeta);
+        }
+        for (int i = 0; i < inventory.getSize(); i++) {
+            inventory.setItem(i, filler);
+        }
+    }
+
     private ItemStack guide(Material material, String name, List<String> lore) {
         ItemStack itemStack = new ItemStack(material);
         ItemMeta meta = itemStack.getItemMeta();
@@ -349,6 +388,27 @@ public final class UpgradeGuiPlugin extends JavaPlugin {
         meta.setDisplayName(ColorUtil.colorize(name));
         meta.setLore(ColorUtil.colorize(lore));
         itemStack.setItemMeta(meta);
+        return itemStack;
+    }
+
+    private ItemStack guide(Material material, String name, List<String> lore, boolean glow) {
+        ItemStack itemStack = guide(material, name, lore);
+        if (glow && itemStack.getItemMeta() != null) {
+            ItemMeta meta = itemStack.getItemMeta();
+            meta.addEnchant(Enchantment.DURABILITY, 1, true);
+            meta.addItemFlags(ItemFlag.HIDE_ENCHANTS);
+            itemStack.setItemMeta(meta);
+        }
+        return itemStack;
+    }
+
+    private ItemStack guide(Material material, String name, List<String> lore, int customModelData) {
+        ItemStack itemStack = guide(material, name, lore);
+        if (itemStack.getItemMeta() != null) {
+            ItemMeta meta = itemStack.getItemMeta();
+            meta.setCustomModelData(customModelData);
+            itemStack.setItemMeta(meta);
+        }
         return itemStack;
     }
 

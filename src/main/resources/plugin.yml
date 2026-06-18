@@ -3,12 +3,12 @@ version: ${project.version}
 main: io.github.sunglogbag81.upgradegui.UpgradeGuiPlugin
 api-version: '1.20'
 author: sunglogbag81
-description: 설정 기반 GUI 강화 플러그인
+description: 단계별 결과 아이템 체인 기반 GUI 강화 플러그인
 softdepend: [Citizens]
 commands:
   강화:
     description: 강화 GUI를 엽니다.
-    usage: /강화 [reload|give|list]
+    usage: /강화 [setup|reload|give|list]
     aliases: [upgradegui, upgrade]
 permissions:
   upgradegui.use:
@@ -25,4 +25,7 @@ permissions:
     default: op
   upgradegui.list:
     description: 강화권 목록을 봅니다.
+    default: op
+  upgradegui.setup:
+    description: 단계별 결과 아이템 설정 GUI를 엽니다.
     default: op

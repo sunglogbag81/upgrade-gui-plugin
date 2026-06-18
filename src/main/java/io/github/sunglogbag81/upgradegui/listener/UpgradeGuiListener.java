@@ -3,6 +3,7 @@ package io.github.sunglogbag81.upgradegui.listener;
 import io.github.sunglogbag81.upgradegui.UpgradeGuiPlugin;
 import io.github.sunglogbag81.upgradegui.config.UpgradeConfig;
 import io.github.sunglogbag81.upgradegui.gui.UpgradeMenuHolder;
+import io.github.sunglogbag81.upgradegui.gui.UpgradeSetupMenuHolder;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
@@ -22,9 +23,16 @@ public final class UpgradeGuiListener implements Listener {
 
     @EventHandler
     public void onClick(InventoryClickEvent event) {
-        if (!(event.getView().getTopInventory().getHolder() instanceof UpgradeMenuHolder)) {
+        if (event.getView().getTopInventory().getHolder() instanceof UpgradeMenuHolder) {
+            handleUpgradeMenuClick(event);
             return;
         }
+        if (event.getView().getTopInventory().getHolder() instanceof UpgradeSetupMenuHolder) {
+            handleSetupMenuClick(event);
+        }
+    }
+
+    private void handleUpgradeMenuClick(InventoryClickEvent event) {
         if (config.isLockGuiDuringDelay() && event.getWhoClicked() instanceof Player player && plugin.isProcessing(player)) {
             event.setCancelled(true);
             return;
@@ -55,26 +63,58 @@ public final class UpgradeGuiListener implements Listener {
         }
     }
 
-    @EventHandler
-    public void onDrag(InventoryDragEvent event) {
-        if (!(event.getView().getTopInventory().getHolder() instanceof UpgradeMenuHolder)) {
-            return;
-        }
-        if (config.isLockGuiDuringDelay() && event.getWhoClicked() instanceof Player player && plugin.isProcessing(player)) {
-            event.setCancelled(true);
-            return;
-        }
+    private void handleSetupMenuClick(InventoryClickEvent event) {
+        int rawSlot = event.getRawSlot();
         int topSize = event.getView().getTopInventory().getSize();
-        for (int rawSlot : event.getRawSlots()) {
-            if (rawSlot < topSize && rawSlot != config.getItemSlot() && rawSlot != config.getTicketSlot()) {
+        boolean topInventory = rawSlot >= 0 && rawSlot < topSize;
+
+        if (topInventory) {
+            int slot = event.getSlot();
+            if (!config.isSetupSlot(slot)) {
                 event.setCancelled(true);
                 return;
+            }
+        } else if (event.isShiftClick() && config.isBlockShiftMoveIntoGui()) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler
+    public void onDrag(InventoryDragEvent event) {
+        if (event.getView().getTopInventory().getHolder() instanceof UpgradeMenuHolder) {
+            if (config.isLockGuiDuringDelay() && event.getWhoClicked() instanceof Player player && plugin.isProcessing(player)) {
+                event.setCancelled(true);
+                return;
+            }
+            int topSize = event.getView().getTopInventory().getSize();
+            for (int rawSlot : event.getRawSlots()) {
+                if (rawSlot < topSize && rawSlot != config.getItemSlot() && rawSlot != config.getTicketSlot()) {
+                    event.setCancelled(true);
+                    return;
+                }
+            }
+            return;
+        }
+
+        if (event.getView().getTopInventory().getHolder() instanceof UpgradeSetupMenuHolder) {
+            int topSize = event.getView().getTopInventory().getSize();
+            for (int rawSlot : event.getRawSlots()) {
+                if (rawSlot < topSize && !config.isSetupSlot(rawSlot)) {
+                    event.setCancelled(true);
+                    return;
+                }
             }
         }
     }
 
     @EventHandler
     public void onClose(InventoryCloseEvent event) {
+        if (event.getInventory().getHolder() instanceof UpgradeSetupMenuHolder) {
+            if (event.getPlayer() instanceof Player player) {
+                plugin.saveSetupInventory(player, event.getInventory());
+            }
+            return;
+        }
         if (!(event.getInventory().getHolder() instanceof UpgradeMenuHolder)) {
             return;
         }

@@ -1,79 +1,66 @@
 # ==============================================================
 # UpgradeGUI 설정 파일
-# - 성공 / 하락 / 초기화 확률을 단계별로 세밀하게 설정할 수 있습니다.
-# - 강화 버튼을 누른 뒤 결과가 나오기까지의 지연시간도 설정할 수 있습니다.
-# - 모든 값은 서버 운영 스타일에 맞게 자유롭게 바꿔 쓰세요.
+# - 강화 단계별 "결과 아이템"을 직접 등록해서 쓰는 방식입니다.
+# - /강화 setup 으로 0강 ~ 최대강 아이템을 순서대로 넣어 저장하세요.
+# - 강화 성공/하락/초기화 시 저장된 결과 아이템으로 통째로 교체됩니다.
 # ==============================================================
 
 gui:
-  # GUI 제목
   title: "&#ffb347강화소"
-
-  # 9~54, 9의 배수
   size: 27
-
-  # 강화 대상 장비 슬롯
   item-slot: 11
-
-  # 강화권 슬롯
   ticket-slot: 15
-
-  # 중앙 미리보기 슬롯
   preview-slot: 13
-
-  # 실행 버튼 슬롯
   apply-slot: 22
-
   filler-material: BLACK_STAINED_GLASS_PANE
   filler-name: " "
-
   preview-name: "&6강화 정보"
   preview-lore:
-    - "&7왼쪽에 장비, 오른쪽에 강화권을 넣어주세요."
-    - "&7현재 기본 지연시간: &f%delay_ticks% ticks"
-
+    - "&7왼쪽에 강화할 아이템, 오른쪽에 강화권을 넣어주세요."
+    - "&7이 플러그인은 단계별 등록 아이템을 기준으로 동작합니다."
+    - "&7현재 아이템 단계: &f%current_level%"
+    - "&7성공 시 예상 단계: &f%next_level%"
+    - "&7처리 지연: &f%delay_ticks% ticks"
   apply-name: "&a강화 실행"
   apply-lore:
-    - "&7클릭하면 강화가 시작됩니다."
-    - "&7결과는 %delay_ticks% ticks 뒤에 처리됩니다."
-
+    - "&7클릭하면 강화 판정이 시작됩니다."
+    - "&7지연시간 후 결과 아이템으로 교체됩니다."
   processing-name: "&e강화 진행 중..."
   processing-lore:
-    - "&7현재 단계: &f+%level%"
-    - "&7예상 다음 단계: &f+%next_level%"
+    - "&7현재 단계: &f%current_level%"
+    - "&7예상 다음 단계: &f%next_level%"
     - "&7남은 처리 시간: &f%delay_ticks% ticks"
-    - "&8처리 중에는 GUI가 잠길 수 있습니다."
-
   success-preview-name: "&a강화 성공"
   downgrade-preview-name: "&e강화 하락"
   destroy-preview-name: "&c강화 초기화"
   result-preview-lore:
-    - "&7이전 단계: &f+%level%"
-    - "&7결과 단계: &f+%next_level%"
+    - "&7이전 단계: &f%current_level%"
+    - "&7결과 단계: &f%next_level%"
     - "&7성공 확률: &f%success%"
     - "&7하락 확률: &f%downgrade%"
     - "&7초기화 확률: &f%destroy%"
 
+setup-gui:
+  title: "&#ffd166강화 단계 설정"
+  size: 18
+  placeholder-material: CHEST
+  placeholder-name: "&e%level%강 결과 아이템 등록"
+  placeholder-lore:
+    - "&7여기에 %level%강 결과 아이템을 넣으세요."
+    - "&7닫으면 설정에 저장되고 원본 아이템은 다시 돌려줍니다."
+  info-material: BOOK
+  info-name: "&6설정 방법"
+  info-lore:
+    - "&71) /강화 setup 실행"
+    - "&72) 0강부터 %max_level%강까지 결과 아이템을 순서대로 넣기"
+    - "&73) GUI를 닫으면 저장 완료"
+
 features:
-  # true면 upgradegui.use 권한 필요
   require-permission: true
-
-  # GUI 닫을 때 남은 아이템 반환
   close-return-items: true
-
-  # Shift+클릭 방지
   block-shift-move-into-gui: true
-
-  # true면 장비 1개짜리만 강화 허용
   allow-stack-size-one-only: true
-
-  # 원래 로어를 유지하면서 강화 로어만 추가
-  preserve-existing-lore: true
-
-  # 강화 처리 대기시간 동안 GUI 잠금
   lock-gui-during-delay: true
-
-  # 강화 처리 중 GUI를 닫았을 때 결과 아이템을 인벤토리로 지급
   deliver-result-to-inventory-if-closed: true
 
 sounds:
@@ -83,65 +70,53 @@ sounds:
   downgrade: ENTITY_EXPERIENCE_ORB_PICKUP
   destroy: ENTITY_ITEM_BREAK
   give: ENTITY_ITEM_PICKUP
+  setup: BLOCK_CHEST_OPEN
 
 messages:
   prefix: "&#ffb347[강화] &f"
   no-permission: "&c권한이 없습니다."
   player-only: "&c플레이어만 사용할 수 있습니다."
   config-reloaded: "&a설정을 다시 불러왔습니다."
-  invalid-item: "&c왼쪽 칸에 강화할 장비를 올려주세요."
+  invalid-item: "&c왼쪽 칸에 강화할 아이템을 올려주세요."
   invalid-ticket: "&c오른쪽 칸에 올바른 강화권을 올려주세요."
-  invalid-material: "&c이 장비는 현재 강화 대상이 아닙니다."
-  item-stack-not-supported: "&c강화는 1개짜리 장비만 가능합니다."
-  already-max-level: "&e이미 최대 강화 단계입니다."
+  invalid-material: "&c이 아이템은 현재 강화 대상이 아닙니다."
+  item-stack-not-supported: "&c강화는 1개짜리 아이템만 가능합니다."
+  already-max-level: "&e이미 최대 강화 단계 아이템입니다."
   already-processing: "&e이미 강화 처리 중입니다. 잠시만 기다려주세요."
   processing-started: "&7강화가 시작되었습니다. %delay_ticks% ticks 후 결과가 적용됩니다."
-  success: "&a강화 성공! 현재 %level%강 입니다."
-  downgrade: "&e강화 실패... %level%강으로 하락했습니다."
-  destroyed: "&c강화 실패! 장비가 0강으로 초기화되었습니다."
+  success: "&a강화 성공! %level%강 결과 아이템으로 변경되었습니다."
+  downgrade: "&e강화 실패... %level%강 결과 아이템으로 하락했습니다."
+  destroyed: "&c강화 실패! 0강 결과 아이템으로 초기화되었습니다."
   result-delivered: "&eGUI가 닫혀 있어 결과 아이템을 인벤토리로 지급했습니다."
   opened: "&7강화 GUI를 열었습니다."
   returned-items: "&e남은 아이템을 인벤토리로 반환했습니다."
   ticket-given: "&a%player%에게 %ticket% x%amount% 지급 완료"
   unknown-ticket: "&c강화권 키를 찾을 수 없습니다: %key%"
-  usage-admin: "&e/강화 reload | /강화 list | /강화 give <player> <ticket> [amount]"
+  unregistered-item: "&c이 아이템은 강화 단계 설정에 등록되어 있지 않습니다. /강화 setup 에서 먼저 등록하세요."
+  missing-result-item: "&c%level%강 결과 아이템이 등록되어 있지 않습니다. /강화 setup 에서 채워주세요."
+  setup-opened: "&e강화 단계 설정 GUI를 열었습니다. 0강부터 순서대로 넣고 닫으면 저장됩니다."
+  setup-saved: "&a강화 단계 설정이 저장되었습니다. 등록된 단계 수: %configured_levels%"
+  usage-admin: "&e/강화 | /강화 setup | /강화 reload | /강화 list | /강화 give <player> <ticket> [amount]"
 
 citizens:
-  # true면 특정 NPC 우클릭으로 강화 GUI 오픈
   enabled: false
-
-  # /npc id 로 확인한 숫자를 넣으세요.
   npc-ids: []
-
-  # true면 NPC로 열 때도 upgradegui.use 권한 검사
   require-permission: true
 
 upgrade:
-  # 최대 강화 단계
+  # 최대 강화 단계. setup GUI에서는 0강 ~ max-level 까지 등록합니다.
   max-level: 10
 
-  # 표시 이름. %level%, %name% 사용 가능
-  level-format: "&6+%level% &f%name%"
-
-  # 로어 줄. %level% 사용 가능
-  lore-line: "&7강화 단계: &6+%level%"
-
-  # 강화 버튼을 누르고 실제 판정이 끝나기까지의 지연시간
+  # 강화 버튼을 누른 뒤 결과가 반영되기까지의 지연시간
   # 20 ticks = 1초
   attempt-delay-ticks: 20
 
   # 비워두면 모든 재질 허용
-  # 넣으면 여기 적힌 재질만 강화 가능
   allowed-materials: []
 
   # 아래 재질은 강화 불가
   blocked-materials:
     - AIR
-
-  # 단계별 CustomModelData 자동 변경
-  custom-model-data-by-level:
-    5: 1005
-    10: 1010
 
 upgrade-tickets:
   basic:
@@ -149,8 +124,7 @@ upgrade-tickets:
     material: PAPER
     display-name: "&#ffd166기본 강화권"
     lore:
-      - "&7장비를 1강 올리는 기본 강화권입니다."
-      - "&8성공/실패 확률은 현재 단계 규칙을 따릅니다."
+      - "&7강화 GUI에서 사용할 기본 강화권입니다."
     custom-model-data:
     glowing: false
 
@@ -159,11 +133,12 @@ upgrade-tickets:
     material: ENCHANTED_BOOK
     display-name: "&#ffdf6b프리미엄 강화권"
     lore:
-      - "&7서버 운영용 예시 강화권"
-      - "&8원하면 별도 로직과 연동해서 쓰세요."
+      - "&7서버 운영용 예시 강화권입니다."
     custom-model-data:
     glowing: true
 
+# 단계별 확률 규칙
+# 현재 0강 아이템을 넣고 강화하면 "0" 규칙을 사용해 1강 / 0강 판정을 합니다.
 level-rules:
   "0":
     success: 100.0
@@ -189,8 +164,6 @@ level-rules:
     success: 50.0
     downgrade: 35.0
     destroy: 15.0
-    success-commands:
-      - "say %player% 님이 %item_name% 을(를) +%next_level% 달성했습니다!"
   "6":
     success: 45.0
     downgrade: 35.0
@@ -207,5 +180,6 @@ level-rules:
     success: 20.0
     downgrade: 45.0
     destroy: 35.0
-    success-commands:
-      - "say %player% 님이 %item_name% 을(를) 최고 단계 +%next_level% 달성!"
+
+# /강화 setup 으로 저장되면 여기에 실제 아이템 정보가 자동으로 저장됩니다.
+upgrade-item-chain: {}

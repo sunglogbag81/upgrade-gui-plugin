@@ -7,6 +7,7 @@ import org.bukkit.Material;
 import org.bukkit.command.CommandSender;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.FileConfiguration;
+import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.util.ArrayList;
@@ -23,7 +24,6 @@ public final class UpgradeConfig {
     private final JavaPlugin plugin;
     private final Map<String, UpgradeTicketDefinition> tickets = new LinkedHashMap<>();
     private final Map<Integer, LevelRule> levelRules = new TreeMap<>();
-    private final Map<Integer, Integer> customModelDataByLevel = new TreeMap<>();
     private final Set<Integer> citizensNpcIds = new LinkedHashSet<>();
     private final Set<Material> allowedMaterials = new LinkedHashSet<>();
     private final Set<Material> blockedMaterials = new LinkedHashSet<>();
@@ -47,18 +47,23 @@ public final class UpgradeConfig {
     private String downgradePreviewName;
     private String destroyPreviewName;
     private List<String> resultPreviewLore;
+    private String setupTitle;
+    private int setupSize;
+    private Material setupPlaceholderMaterial;
+    private String setupPlaceholderName;
+    private List<String> setupPlaceholderLore;
+    private Material setupInfoMaterial;
+    private String setupInfoName;
+    private List<String> setupInfoLore;
     private boolean requirePermission;
     private boolean closeReturnItems;
     private boolean blockShiftMoveIntoGui;
     private boolean allowStackSizeOneOnly;
-    private boolean preserveExistingLore;
     private boolean lockGuiDuringDelay;
     private boolean deliverResultToInventoryIfClosed;
     private boolean citizensEnabled;
     private boolean citizensRequirePermission;
     private int maxLevel;
-    private String levelFormat;
-    private String loreLine;
     private long attemptDelayTicks;
     private String openSound;
     private String startSound;
@@ -66,6 +71,7 @@ public final class UpgradeConfig {
     private String downgradeSound;
     private String destroySound;
     private String giveSound;
+    private String setupSound;
 
     public UpgradeConfig(JavaPlugin plugin) {
         this.plugin = plugin;
@@ -76,7 +82,6 @@ public final class UpgradeConfig {
         FileConfiguration config = plugin.getConfig();
         tickets.clear();
         levelRules.clear();
-        customModelDataByLevel.clear();
         citizensNpcIds.clear();
         allowedMaterials.clear();
         blockedMaterials.clear();
@@ -101,11 +106,19 @@ public final class UpgradeConfig {
         destroyPreviewName = ColorUtil.colorize(config.getString("gui.destroy-preview-name", "&c강화 초기화"));
         resultPreviewLore = ColorUtil.colorize(config.getStringList("gui.result-preview-lore"));
 
+        setupTitle = ColorUtil.colorize(config.getString("setup-gui.title", "&e강화 단계 설정"));
+        setupSize = normalizeSize(Math.max(18, config.getInt("setup-gui.size", 18)));
+        setupPlaceholderMaterial = material(config.getString("setup-gui.placeholder-material"), Material.CHEST);
+        setupPlaceholderName = ColorUtil.colorize(config.getString("setup-gui.placeholder-name", "&e%level%강 결과 아이템 등록"));
+        setupPlaceholderLore = ColorUtil.colorize(config.getStringList("setup-gui.placeholder-lore"));
+        setupInfoMaterial = material(config.getString("setup-gui.info-material"), Material.BOOK);
+        setupInfoName = ColorUtil.colorize(config.getString("setup-gui.info-name", "&6설정 방법"));
+        setupInfoLore = ColorUtil.colorize(config.getStringList("setup-gui.info-lore"));
+
         requirePermission = config.getBoolean("features.require-permission", true);
         closeReturnItems = config.getBoolean("features.close-return-items", true);
         blockShiftMoveIntoGui = config.getBoolean("features.block-shift-move-into-gui", true);
         allowStackSizeOneOnly = config.getBoolean("features.allow-stack-size-one-only", true);
-        preserveExistingLore = config.getBoolean("features.preserve-existing-lore", true);
         lockGuiDuringDelay = config.getBoolean("features.lock-gui-during-delay", true);
         deliverResultToInventoryIfClosed = config.getBoolean("features.deliver-result-to-inventory-if-closed", true);
 
@@ -118,24 +131,10 @@ public final class UpgradeConfig {
             }
         }
 
-        maxLevel = Math.max(0, config.getInt("upgrade.max-level", 10));
-        levelFormat = ColorUtil.colorize(config.getString("upgrade.level-format", "&6+%level% &f%name%"));
-        loreLine = ColorUtil.colorize(config.getString("upgrade.lore-line", "&7강화 단계: &6+%level%"));
+        maxLevel = Math.max(1, config.getInt("upgrade.max-level", 10));
         attemptDelayTicks = Math.max(0L, config.getLong("upgrade.attempt-delay-ticks", 20L));
-
         loadMaterials(config.getStringList("upgrade.allowed-materials"), allowedMaterials);
         loadMaterials(config.getStringList("upgrade.blocked-materials"), blockedMaterials);
-
-        ConfigurationSection cmdSection = config.getConfigurationSection("upgrade.custom-model-data-by-level");
-        if (cmdSection != null) {
-            for (String key : cmdSection.getKeys(false)) {
-                Integer level = parseOptionalInt(key);
-                Integer value = parseOptionalInt(cmdSection.get(key));
-                if (level != null && value != null) {
-                    customModelDataByLevel.put(level, value);
-                }
-            }
-        }
 
         openSound = config.getString("sounds.open", "BLOCK_ENCHANTMENT_TABLE_USE");
         startSound = config.getString("sounds.start", "BLOCK_NOTE_BLOCK_PLING");
@@ -143,6 +142,7 @@ public final class UpgradeConfig {
         downgradeSound = config.getString("sounds.downgrade", "ENTITY_EXPERIENCE_ORB_PICKUP");
         destroySound = config.getString("sounds.destroy", "ENTITY_ITEM_BREAK");
         giveSound = config.getString("sounds.give", "ENTITY_ITEM_PICKUP");
+        setupSound = config.getString("sounds.setup", "BLOCK_CHEST_OPEN");
 
         ConfigurationSection ticketSection = config.getConfigurationSection("upgrade-tickets");
         if (ticketSection != null) {
@@ -179,6 +179,76 @@ public final class UpgradeConfig {
                 ));
             }
         }
+    }
+
+    public ItemStack getTemplate(int level) {
+        ItemStack item = plugin.getConfig().getItemStack("upgrade-item-chain." + level);
+        if (item == null || item.getType().isAir()) {
+            return null;
+        }
+        ItemStack clone = item.clone();
+        clone.setAmount(1);
+        return clone;
+    }
+
+    public void saveTemplate(int level, ItemStack item) {
+        if (item == null || item.getType().isAir()) {
+            plugin.getConfig().set("upgrade-item-chain." + level, null);
+        } else {
+            ItemStack clone = item.clone();
+            clone.setAmount(1);
+            plugin.getConfig().set("upgrade-item-chain." + level, clone);
+        }
+    }
+
+    public void persistTemplateChanges() {
+        plugin.saveConfig();
+    }
+
+    public int findMatchingLevel(ItemStack item) {
+        if (item == null || item.getType().isAir()) {
+            return -1;
+        }
+        ItemStack normalized = item.clone();
+        normalized.setAmount(1);
+        for (int level = 0; level <= maxLevel; level++) {
+            ItemStack template = getTemplate(level);
+            if (template != null && template.isSimilar(normalized)) {
+                return level;
+            }
+        }
+        return -1;
+    }
+
+    public List<Integer> getConfiguredLevels() {
+        List<Integer> result = new ArrayList<>();
+        for (int level = 0; level <= maxLevel; level++) {
+            if (getTemplate(level) != null) {
+                result.add(level);
+            }
+        }
+        return result;
+    }
+
+    public int getSetupSlot(int level) {
+        return level;
+    }
+
+    public int getSetupInfoSlot() {
+        return setupSize - 1;
+    }
+
+    public boolean isSetupSlot(int slot) {
+        return slot >= 0 && slot <= maxLevel && slot < setupSize;
+    }
+
+    public ItemStack normalizeTemplate(ItemStack item) {
+        if (item == null) {
+            return null;
+        }
+        ItemStack clone = item.clone();
+        clone.setAmount(1);
+        return clone;
     }
 
     private void loadMaterials(List<String> values, Set<Material> target) {
@@ -265,21 +335,12 @@ public final class UpgradeConfig {
         }
     }
 
-    public List<String> renderPreviewLore(Map<String, String> replacements) {
-        return replaceAll(previewLore, replacements);
-    }
-
-    public List<String> renderApplyLore(Map<String, String> replacements) {
-        return replaceAll(applyLore, replacements);
-    }
-
-    public List<String> renderProcessingLore(Map<String, String> replacements) {
-        return replaceAll(processingLore, replacements);
-    }
-
-    public List<String> renderResultPreviewLore(Map<String, String> replacements) {
-        return replaceAll(resultPreviewLore, replacements);
-    }
+    public List<String> renderPreviewLore(Map<String, String> replacements) { return replaceAll(previewLore, replacements); }
+    public List<String> renderApplyLore(Map<String, String> replacements) { return replaceAll(applyLore, replacements); }
+    public List<String> renderProcessingLore(Map<String, String> replacements) { return replaceAll(processingLore, replacements); }
+    public List<String> renderResultPreviewLore(Map<String, String> replacements) { return replaceAll(resultPreviewLore, replacements); }
+    public List<String> renderSetupPlaceholderLore(Map<String, String> replacements) { return replaceAll(setupPlaceholderLore, replacements); }
+    public List<String> renderSetupInfoLore(Map<String, String> replacements) { return replaceAll(setupInfoLore, replacements); }
 
     private List<String> replaceAll(List<String> source, Map<String, String> replacements) {
         List<String> result = new ArrayList<>();
@@ -293,9 +354,7 @@ public final class UpgradeConfig {
         return result;
     }
 
-    public boolean isSlotInBounds(int slot) {
-        return slot >= 0 && slot < guiSize;
-    }
+    public boolean isSlotInBounds(int slot) { return slot >= 0 && slot < guiSize; }
 
     public boolean isMaterialAllowed(Material material) {
         if (material == null) {
@@ -316,10 +375,6 @@ public final class UpgradeConfig {
         return fallback == null ? new LevelRule(100.0D, 0.0D, 0.0D, List.of()) : fallback;
     }
 
-    public Integer getCustomModelData(int level) {
-        return customModelDataByLevel.get(level);
-    }
-
     public Map<String, UpgradeTicketDefinition> getTickets() { return Collections.unmodifiableMap(tickets); }
     public UpgradeTicketDefinition getTicket(String key) { return key == null ? null : tickets.get(key.toLowerCase(Locale.ROOT)); }
     public String getGuiTitle() { return guiTitle; }
@@ -336,19 +391,22 @@ public final class UpgradeConfig {
     public String getSuccessPreviewName() { return successPreviewName; }
     public String getDowngradePreviewName() { return downgradePreviewName; }
     public String getDestroyPreviewName() { return destroyPreviewName; }
+    public String getSetupTitle() { return setupTitle; }
+    public int getSetupSize() { return setupSize; }
+    public Material getSetupPlaceholderMaterial() { return setupPlaceholderMaterial; }
+    public String getSetupPlaceholderName() { return setupPlaceholderName; }
+    public Material getSetupInfoMaterial() { return setupInfoMaterial; }
+    public String getSetupInfoName() { return setupInfoName; }
     public boolean isRequirePermission() { return requirePermission; }
     public boolean isCloseReturnItems() { return closeReturnItems; }
     public boolean isBlockShiftMoveIntoGui() { return blockShiftMoveIntoGui; }
     public boolean isAllowStackSizeOneOnly() { return allowStackSizeOneOnly; }
-    public boolean isPreserveExistingLore() { return preserveExistingLore; }
     public boolean isLockGuiDuringDelay() { return lockGuiDuringDelay; }
     public boolean isDeliverResultToInventoryIfClosed() { return deliverResultToInventoryIfClosed; }
     public boolean isCitizensEnabled() { return citizensEnabled; }
     public boolean isCitizensRequirePermission() { return citizensRequirePermission; }
     public Set<Integer> getCitizensNpcIds() { return Collections.unmodifiableSet(citizensNpcIds); }
     public int getMaxLevel() { return maxLevel; }
-    public String getLevelFormat() { return levelFormat; }
-    public String getLoreLine() { return loreLine; }
     public long getAttemptDelayTicks() { return attemptDelayTicks; }
     public String getOpenSound() { return openSound; }
     public String getStartSound() { return startSound; }
@@ -356,4 +414,5 @@ public final class UpgradeConfig {
     public String getDowngradeSound() { return downgradeSound; }
     public String getDestroySound() { return destroySound; }
     public String getGiveSound() { return giveSound; }
+    public String getSetupSound() { return setupSound; }
 }
